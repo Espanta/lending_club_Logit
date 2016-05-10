@@ -1,0 +1,208 @@
+---
+title: "Main"
+author: "Saeid Abolfazli"
+date: "May 10, 2016"
+output: html_document
+---
+Load data from `loans.csv`
+
+```{r}
+file <- file.path("data","loans.csv")
+loans <- read.csv(file)
+```
+
+What proportion of the loans in the dataset were not paid in full? Please input a number between 0 and 1.
+
+```{r}
+table(loans$not.fully.paid)/dim(loans)[1]
+```
+
+Which of the following variables has at least one missing observation? Select all that apply.
+
+```{r}
+summary(loans)
+```
+
+Which of the following is the best reason to fill in the missing values for these variables instead of removing observations with missing data? (Hint: you can use the subset() function to build a data frame with the observations missing at least one value. To test if a variable, for example pub.rec, is missing a value, use is.na(pub.rec).)
+
+```{r}
+completeloans<-loans[complete.cases(loans),]
+noLoans <-loans[!complete.cases(loans),]
+table(noLoans$not.fully.paid)
+```
+
+For the rest of this problem, we'll be using a revised version of the dataset that has the missing values filled in with multiple imputation (which was discussed in the Recitation of this Unit). To ensure everybody has the same data frame going forward, you can either run the commands below in your R console (if you haven't already, run the command install.packages("mice") first), or you can download and load into R the dataset we created after running the imputation: loans_imputed.csv.
+
+
+```{r}
+library(lubripack)
+lubripack("mice")
+set.seed(144)
+vars.for.imputation = setdiff(names(loans), "not.fully.paid")
+imputed = complete(mice(loans[vars.for.imputation]))
+loans[vars.for.imputation] = imputed
+```
+
+IMPORTANT NOTE: On certain operating systems, the imputation results are not the same even if you set the random seed. If you decide to do the imputation yourself, please still read the provided imputed dataset (loans_imputed.csv) into R and compare your results, using the summary function. If the results are different, please make sure to use the data in loans_imputed.csv for the rest of the problem.
+
+
+What best describes the process we just used to handle missing values?
+
+Answer: We predicted missing variable values using the available independent variables for each observation.
+
+
+Now that we have prepared the dataset, we need to split it into a training and testing set. To ensure everybody obtains the same split, set the random seed to 144 (even though you already did so earlier in the problem) and use the sample.split function to select the 70% of observations for the training set (the dependent variable for sample.split is not.fully.paid). Name the data frames train and test.
+
+We prefer to bring the imputed datset provided by course itself
+```{r}
+loans <- read.table("data/loans_imputed.csv", sep=",",header=TRUE)
+set.seed(144)
+lubripack("caTools")
+index <- sample.split(loans$not.fully.paid,SplitRatio =  0.70)
+train <- loans[index,]
+test <- loans[!index,]
+```
+
+Now, use logistic regression trained on the training set to predict the dependent variable not.fully.paid using all the independent variables.
+
+```{r}
+model1<- glm(not.fully.paid~.,data=train, family = binomial())
+summary(model1)
+```
+Which independent variables are significant in our model? (Significant variables have at least one star, or a Pr(>|z|) value less than 0.05.) Select all that apply.
+
+Consider two loan applications, which are identical other than the fact that the borrower in Application A has FICO credit score 700 while the borrower in Application B has FICO credit score 710.
+
+Let Logit(A) be the log odds of loan A not being paid back in full, according to our logistic regression model, and define Logit(B) similarly for loan B. What is the value of Logit(A) - Logit(B)?
+
+ 700 * -9.317e-03 - 710 * -9.317e-03 = 0.09317
+ 
+Now, let O(A) be the odds of loan A not being paid back in full, according to our logistic regression model, and define O(B) similarly for loan B. What is the value of O(A)/O(B)? (HINT: Use the mathematical rule that exp(A + B + C) = exp(A)*exp(B)*exp(C). Also, remember that exp() is the exponential function in R.)
+
+ODD.A <- exp(9.187145e+00-3.368046e-01-6.140571e-01-3.212048e-01+1.347239e-01+1.727009e-01-4.829924e-01+4.120478e-01+6.109806e-01+1.274688e-03-4.336755e-01+ 4.637680e-03 - (700*9.316790e-03)+2.370828e-06+3.085334e-06+ 1.839259e-03+8.437328e-02-8.319927e-02+3.299566e-01)
+
+
+ODD.B <- exp(9.187145e+00-3.368046e-01-6.140571e-01-3.212048e-01+1.347239e-01+1.727009e-01-4.829924e-01+4.120478e-01+6.109806e-01+1.274688e-03-4.336755e-01+ 4.637680e-03 - (710*9.316790e-03)+2.370828e-06+3.085334e-06+ 1.839259e-03+8.437328e-02-8.319927e-02+3.299566e-01)
+
+ODD.A/ODD.B
+
+Predict the probability of the test set loans not being paid back in full (remember type="response" for the predict function). Store these predicted probabilities in a variable named predicted.risk and add it to your test set (we will use this variable in later parts of the problem). Compute the confusion matrix using a threshold of 0.5.
+```{r}
+predicted.risk <- predict(model1,type ="response", newdata = test)
+test$predicted.risk <- predicted.risk
+table( test$not.fully.paid, predicted.risk >= 0.5 )
+
+(2400+3)/(2400+3+13+457)
+
+table(test$not.fully.paid)
+
+2413/(2413+460)
+```
+
+
+What is the accuracy of the logistic regression model? Input the accuracy as a number between 0 and 1.
+
+0.8364079
+
+What is the accuracy of the baseline model? Input the accuracy as a number between 0 and 1.
+
+ 0.8398886 - correct  
+ 
+Use the ROCR package to compute the test set AUC.
+
+```{r}
+lubripack("ROCR")
+ROCPred <- prediction(predicted.risk,test$not.fully.paid)
+ROCPerf <- performance(ROCPred,"auc")
+```
+
+Using the training set, build a bivariate logistic regression model (aka a logistic regression model with a single independent variable) that predicts the dependent variable not.fully.paid using only the variable int.rate.
+
+```{r}
+Loans_bivariate <- glm(not.fully.paid~int.rate, data = train, family = binomial)
+summary(Loans_bivariate)
+```
+
+The variable int.rate is highly significant in the bivariate model, but it is not significant at the 0.05 level in the model trained with all the independent variables. What is the most likely explanation for this difference?
+
+**Answer:** int.rate is correlated with other risk-related variables, and therefore does not incrementally improve the model when those other variables are included
+
+Make test set predictions for the bivariate model. What is the highest predicted probability of a loan not being paid in full on the testing set?
+
+```{r}
+loanPredTest <- predict(Loans_bivariate, type = "response", newdata=test)
+max(loanPredTest)
+table(test$not.fully.paid, loanPredTest >= 0.5)
+```
+**Answer** 0 because all are FALSE.
+
+What is the test set AUC of the bivariate model?
+
+```{r}
+ROCPred <- prediction(loanPredTest,test$not.fully.paid)
+ROCPerf <- performance(ROCPred, "auc")
+ROCPerf
+```
+
+While thus far we have predicted if a loan will be paid back or not, an investor needs to identify loans that are expected to be profitable. If the loan is paid back in full, then the investor makes interest on the loan. However, if the loan is not paid back, the investor loses the money invested. Therefore, the investor should seek loans that best balance this risk and reward.
+
+To compute interest revenue, consider a $c investment in a loan that has an annual interest rate r over a period of t years. Using continuous compounding of interest, this investment pays back c * exp(rt) dollars by the end of the t years, where exp(rt) is e raised to the r*t power.
+
+How much does a $10 investment with an annual interest rate of 6% pay back after 3 years, using continuous compounding of interest? Hint: remember to convert the percentage to a proportion before doing the math. Enter the number of dollars, without the $ sign.
+
+```{r}
+10 * exp(3*6/100)
+```
+
+While the investment has value c * exp(rt) dollars after collecting interest, the investor had to pay $c for the investment. What is the profit to the investor if the investment is paid back in full?
+
+**Answer:** c * exp(rt) - c  
+
+Now, consider the case where the investor made a $c investment, but it was not paid back in full. Assume, conservatively, that no money was received from the borrower (often a lender will receive some but not all of the value of the loan, making this a pessimistic assumption of how much is received). What is the profit to the investor in this scenario?
+
+**Answer:** -c
+
+In the previous subproblem, we concluded that an investor who invested c dollars in a loan with interest rate r for t years makes c * (exp(rt) - 1) dollars of profit if the loan is paid back in full and -c dollars of profit if the loan is not paid back in full (pessimistically).
+
+In order to evaluate the quality of an investment strategy, we need to compute this profit for each loan in the test set. For this variable, we will assume a $1 investment (aka c=1). To create the variable, we first assign to the profit for a fully paid loan, exp(rt)-1, to every observation, and we then replace this value with -1 in the cases where the loan was not paid in full. All the loans in our dataset are 3-year loans, meaning t=3 in our calculations. Enter the following commands in your R console to create this new variable:
+
+```{r}
+test$profit = exp(test$int.rate*3) - 1
+
+test$profit[test$not.fully.paid == 1] = -1
+```
+
+What is the maximum profit of a $10 investment in any loan in the testing set?
+
+```{r}
+max(test$profit) * 10
+```
+
+
+A simple investment strategy of equally investing in all the loans would yield profit $20.94 for a $100 investment. But this simple investment strategy does not leverage the prediction model we built earlier in this problem. As stated earlier, investors seek loans that balance reward with risk, in that they simultaneously have high interest rates and a low risk of not being paid back.
+
+To meet this objective, we will analyze an investment strategy in which the investor only purchases loans with a high interest rate (a rate of at least 15%), but amongst these loans selects the ones with the lowest predicted risk of not being paid back in full. We will model an investor who invests $1 in each of the most promising 100 loans.
+
+
+```{r}
+highInterest <- test[test$int.rate >=0.15,]
+mean(highInterest$profit)
+```
+
+What is the average profit of a $1 investment in one of these high-interest loans (do not include the $ sign in your answer)?
+
+What proportion of the high-interest loans were not paid back in full?
+
+```{r}
+table(highInterest$not.fully.paid)/nrow(highInterest)
+
+```
+
+Next, we will determine the 100th smallest predicted probability of not paying in full by sorting the predicted risks in increasing order and selecting the 100th element of this sorted list. Find the highest predicted risk that we will include by typing the following command into your R console:
+
+```{r}
+cutoff = sort(highInterest$predicted.risk, decreasing=FALSE)[100]
+selectedLoans <- highInterest[highInterest$predicted.risk <= cutoff,]
+sum(selectedLoans$profit)
+table(selectedLoans$not.fully.paid)
+```
